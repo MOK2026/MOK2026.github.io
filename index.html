@@ -439,6 +439,7 @@
             <div class="drag-hint">📁 放開以加入檔案</div>
             <textarea id="chatInput" rows="2" placeholder="Shift+Enter 換行，Enter 發送"></textarea>
             <div class="btn-group">
+                <button id="loadCodeBtn">📂 載入程式碼庫</button>
                 <button id="attachFileBtn">📎</button>
                 <button id="scrollToBottomBtn">↓</button>
                 <button id="mobileOpenLeftBtn" class="mobile-panel-btn">☰</button>
@@ -652,9 +653,13 @@ function renderMarkdown(text) {
         const textMimeTypes = ['text/plain', 'text/markdown', 'text/html', 'text/css', 'text/javascript', 'application/json', 'application/xml', 'text/csv'];
         for (const file of files) {
             // 檔案大小限制 2MB（文字檔案）
-            if (file.size > 2 * 1024 * 1024 && textMimeTypes.some(mime => file.type.includes(mime))) {
-                alert(`檔案 ${file.name} 過大（>2MB），文字檔案暫不支援超過 2MB。`);
-                continue;
+            // 文字檔案大小限制：一般2MB，合併程式碼庫放寬至15MB
+            if (textMimeTypes.some(mime => file.type.includes(mime))) {
+                const maxSize = (file.name.includes('程式碼庫') || file.name.includes('MOKAGI_完整')) ? 15 * 1024 * 1024 : 2 * 1024 * 1024;
+                if (file.size > maxSize) {
+                    alert(`「${file.name}」檔案過大(>${maxSize/1024/1024}MB)，無法加入附件`);
+                    continue;
+                }
             }
             const att = { name: file.name, type: file.type, size: file.size };
             if (textMimeTypes.some(mime => file.type.includes(mime)) || /\.(txt|md|json|js|html|css|py|cpp|c|java|go|rs)$/i.test(file.name)) {
@@ -1009,7 +1014,9 @@ function initFilePanel() {
     function initCollapse() { const agentSide = document.getElementById('agentSidebar'); const filePanel = document.getElementById('filePanel'); const toggleAgent = document.getElementById('toggleAgentBtn'); const toggleFile = document.getElementById('toggleFileBtn'); const mobileLeft = document.getElementById('mobileOpenLeftBtn'); const mobileRight = document.getElementById('mobileOpenRightBtn'); const isMobile = () => window.innerWidth <= 768; toggleAgent.addEventListener('click', () => { if (isMobile()) agentSide.classList.toggle('mobile-open'); else agentSide.classList.toggle('collapsed'); }); toggleFile.addEventListener('click', () => { if (isMobile()) filePanel.classList.toggle('mobile-open'); else filePanel.classList.toggle('collapsed'); }); if (mobileLeft) mobileLeft.addEventListener('click', (e) => { e.stopPropagation(); agentSide.classList.add('mobile-open'); }); if (mobileRight) mobileRight.addEventListener('click', (e) => { e.stopPropagation(); filePanel.classList.add('mobile-open'); }); document.querySelector('.chat-main').addEventListener('click', () => { if (isMobile()) { agentSide.classList.remove('mobile-open'); filePanel.classList.remove('mobile-open'); } }); window.addEventListener('resize', () => { if (window.innerWidth > 768) { agentSide.classList.remove('mobile-open'); filePanel.classList.remove('mobile-open'); } }); }
     function checkApiKey() { if (!API_KEY) { const key = prompt('請輸入您的 DeepSeek API Key (開頭 sk-)\n可至 platform.deepseek.com 取得', ''); if (key && key.trim()) { API_KEY = key.trim(); localStorage.setItem('deepseek_api_key', API_KEY); } else { alert('未輸入 API Key，將無法與 AI 對話。'); } } }
     function bindEvents() { 
-        
+
+
+        document.getElementById('loadCodeBtn').addEventListener('click', loadCodeLibrary);
         
         // ---------- 拖放檔案 ----------
         const chatInputArea = document.querySelector('.chat-input-area');
@@ -1052,6 +1059,72 @@ function initFilePanel() {
         sendBtn.addEventListener('click', () => { const msg = chatInput.value.trim(); if (!msg) return; if (!API_KEY) { checkApiKey(); if (!API_KEY) return; } sendMessageToAPI(msg); chatInput.value = ''; chatInput.style.height = 'auto'; }); chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendBtn.click(); } }); chatInput.addEventListener('input', function() { this.style.height = 'auto'; this.style.height = Math.min(this.scrollHeight, 100) + 'px'; }); stopBtn.addEventListener('click', stopGeneration); clearChatBtn.addEventListener('click', clearCurrentChat); document.getElementById('addAgentBtn').addEventListener('click', addNewAgent); }
     async function init() { loadAgentsFromStorage(); checkApiKey(); bindEvents(); initCollapse(); initFilePanel(); initHorizontalResize(); initVerticalResize(); initScrollButton(); const curAgent = agents.find(a => a.id === currentAgentId); if (curAgent && curAgent.history.length === 0) { addMessageToHistory('assistant', `✨ ${curAgent.icon} ${curAgent.name} 已甦醒，隨時聽候吩咐。`); } else { loadChatHistoryForCurrentAgent(); } }
     init();
+
+
+
+
+
+
+
+
+
+
+// ========== 程式碼庫匯入功能 ==========
+async function loadCodeLibrary() {
+    try {
+        const dirHandle = await window.showDirectoryPicker({ mode: 'read' });
+        const allFiles = [];
+        await collectTextFiles(dirHandle, '', allFiles);
+        if (allFiles.length === 0) {
+            alert('未找到任何文字檔案（.py / .md / .json / .js 等）');
+            return;
+        }
+        
+        // 合併成一個大文字區塊（附帶目錄結構）
+        let mergedContent = '# MOKAGI 程式碼庫\n\n';
+        for (const { path, content } of allFiles) {
+            mergedContent += `## 📁 ${path}\n\`\`\`\n${content}\n\`\`\`\n\n`;
+        }
+        
+        // 建立附件（使用 Blob 模擬檔案）
+        const blob = new Blob([mergedContent], { type: 'text/plain' });
+        const fakeFile = new File([blob], 'MOKAGI_完整程式碼庫.md', { type: 'text/plain' });
+        
+        // 使用現有的 handleFiles 加入附件
+        await handleFiles([fakeFile]);
+        
+        alert(`✅ 已載入 ${allFiles.length} 個檔案，總大小 ${(blob.size / 1024).toFixed(1)}KB`);
+    } catch (err) {
+        if (err.name !== 'AbortError') {
+            console.error('載入程式碼庫失敗', err);
+            alert('❌ 載入失敗：' + err.message);
+        }
+    }
+}
+
+async function collectTextFiles(dirHandle, prefix, result) {
+    const textExtensions = /\.(py|md|json|js|html|css|cpp|c|java|go|rs|ts|sh|yml|yaml|txt|cfg|conf|ini|env|toml)$/i;
+    for await (const entry of dirHandle.values()) {
+        if (entry.kind === 'directory') {
+            await collectTextFiles(entry, `${prefix}${entry.name}/`, result);
+        } else if (entry.kind === 'file' && textExtensions.test(entry.name)) {
+            const file = await entry.getFile();
+            // 限制單檔大小 500KB，避免記憶體爆炸
+            if (file.size > 500 * 1024) continue;
+            const content = await file.text();
+            // 只保留可讀文字
+            if (content.length > 0) {
+                result.push({ path: `${prefix}${entry.name}`, content });
+            }
+        }
+    }
+}
+
+
+
+
+
+
 </script>
 </body>
 </html>
