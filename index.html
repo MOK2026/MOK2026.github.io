@@ -14,11 +14,12 @@
         }
         body {
             margin: 0;
-            height: 100vh;
             background: #1e1e1e;
             color: #d4d4d4;
             font-family: 'Segoe UI', 'Cascadia Code', 'Courier New', monospace;
             overflow: hidden;
+            height: 100vh;
+            height: 100dvh; /* 手機瀏覽器優先使用動態高度 */
         }
         .app {
             display: flex;
@@ -415,13 +416,13 @@
             <div id="attachmentsContainer" class="attachments-area" style="display: none;"></div>
             <textarea id="chatInput" rows="2" placeholder="Shift+Enter 換行，Enter 發送"></textarea>
             <div class="btn-group">
-                <button id="attachFileBtn">📎 加入檔案</button>
+                <button id="attachFileBtn">📎</button>
                 <button id="scrollToBottomBtn">↓</button>
                 <button id="mobileOpenLeftBtn" class="mobile-panel-btn">☰</button>
                 <button id="mobileOpenRightBtn" class="mobile-panel-btn">📂</button>
-                <button id="stopBtn">⏹️ 停止</button>
-                <button id="clearChatBtn">🗑️ 清除對話</button>
-                <button id="sendBtn">📨 發送</button>
+                <button id="stopBtn">⏹️</button>
+                <button id="clearChatBtn">🗑️</button>
+                <button id="sendBtn">📨</button>
             </div>
         </div>
     </div>
