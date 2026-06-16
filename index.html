@@ -499,31 +499,108 @@
         checkScroll();
     }
 
-    // 渲染 Markdown + 代碼高亮 + 複製按鈕
-    function renderMarkdown(text) {
-        let html = marked.parse(text || '', { breaks: true });
-        const temp = document.createElement('div');
-        temp.innerHTML = html;
-        temp.querySelectorAll('pre').forEach(pre => {
-            const wrapper = document.createElement('div');
-            wrapper.style.position = 'relative';
-            const copyBtn = document.createElement('button');
-            copyBtn.textContent = '📋 複製';
-            copyBtn.style.cssText = `position: absolute; top: 4px; right: 4px; background: #4ec9b0; border: none; border-radius: 4px; padding: 2px 8px; font-size: 0.7rem; cursor: pointer; opacity: 0.7;`;
-            copyBtn.addEventListener('click', () => {
-                const codeText = pre.querySelector('code')?.textContent || pre.textContent;
-                navigator.clipboard.writeText(codeText).then(() => {
-                    copyBtn.textContent = '✅ 已複製';
-                    setTimeout(() => copyBtn.textContent = '📋 複製', 1500);
-                });
-            });
-            pre.parentNode.insertBefore(wrapper, pre);
-            wrapper.appendChild(pre);
-            wrapper.appendChild(copyBtn);
+
+
+
+
+
+
+// 增強按鈕：使用 pointerdown 事件（手機觸控優先）
+document.addEventListener('pointerdown', function(e) {
+    const btn = e.target.closest('.copy-btn');
+    if (!btn) return;
+    // 防止 click 重複觸發
+    if (btn.dataset.copied) return;
+    btn.dataset.copied = '1';
+    
+    const pre = btn.closest('div[style*="relative"]')?.querySelector('pre');
+    if (!pre) return;
+    const codeEl = pre.querySelector('code');
+    const codeText = (codeEl ? codeEl.textContent : pre.textContent).trimEnd();
+
+    const ta = document.createElement('textarea');
+    ta.value = codeText;
+    ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;';
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, codeText.length);
+    let success = false;
+    try { success = document.execCommand('copy'); } catch(e) {}
+    document.body.removeChild(ta);
+
+    btn.textContent = success ? '✅ 已複製' : '⚠️ 長按選取';
+    setTimeout(() => {
+        btn.textContent = '📋 複製';
+        delete btn.dataset.copied;
+    }, success ? 1500 : 3000);
+});
+
+
+    
+function renderMarkdown(text) {
+    let html = marked.parse(text || '', { breaks: true });
+    const temp = document.createElement('div');
+    temp.innerHTML = html;
+
+    temp.querySelectorAll('pre').forEach(pre => {
+        if (pre.closest('.think-container')) return;
+
+        const wrapper = document.createElement('div');
+        wrapper.style.position = 'relative';
+        wrapper.style.overflow = 'visible'; // 避免按鈕被裁
+
+        const copyBtn = document.createElement('button');
+        copyBtn.textContent = '📋 複製';
+        copyBtn.style.cssText = `
+            position: absolute; top: 6px; right: 6px;
+            background: #4ec9b0; border: none; border-radius: 6px;
+            padding: 8px 14px; font-size: 0.9rem;
+            cursor: pointer; opacity: 0.9; z-index: 999;
+            touch-action: manipulation;
+        `;
+        copyBtn.className = 'copy-btn'; 
+
+        // 點擊事件：使用同步 execCommand
+        copyBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const codeEl = pre.querySelector('code');
+            const codeText = (codeEl ? codeEl.textContent : pre.textContent).trimEnd();
+
+            const ta = document.createElement('textarea');
+            ta.value = codeText;
+            ta.style.cssText = `
+                position: fixed; top: -9999px; left: -9999px;
+                opacity: 0; pointer-events: none;
+            `;
+            document.body.appendChild(ta);
+            ta.select();
+            ta.setSelectionRange(0, codeText.length);
+            let success = false;
+            try {
+                success = document.execCommand('copy');
+            } catch (err) { /*忽略*/ }
+            document.body.removeChild(ta);
+
+            this.textContent = success ? '✅ 已複製' : '⚠️ 長按選取';
+            if (success) {
+                setTimeout(() => this.textContent = '📋 複製', 1500);
+            } else {
+                setTimeout(() => this.textContent = '📋 複製', 3000);
+            }
         });
-        temp.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
-        return temp.innerHTML;
-    }
+
+        pre.parentNode.insertBefore(wrapper, pre);
+        wrapper.appendChild(pre);
+        wrapper.appendChild(copyBtn);
+    });
+
+    temp.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
+    return temp.innerHTML;
+}
+
+
+
+
 
     // 附件 UI 更新
     function updateAttachmentsUI() {
