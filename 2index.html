@@ -1,0 +1,1019 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>稚 · 本地 AI 助手 & 檔案編輯器</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js">
+    </script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js">
+    </script>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            margin: 0;
+            height: 100vh;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            font-family: 'Segoe UI', 'Cascadia Code', 'Courier New', monospace;
+            overflow: hidden;
+        }
+        .app {
+            display: flex;
+            height: 100%;
+            width: 100%;
+        }
+        .agent-sidebar {
+            width: 260px;
+            min-width: 100px;
+            background: #252526;
+            border-right: 1px solid #3e3e42;
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+            transition: width 0.2s;
+            position: relative;
+        }
+        .agent-sidebar.collapsed {
+            width: 100px;
+        }
+        .agent-sidebar.collapsed .agent-name,
+        .agent-sidebar.collapsed .agent-header span {
+            display: none;
+        }
+        .agent-header {
+            padding: 12px 8px;
+            background: #2d2d30;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: bold;
+            color: #4ec9b0;
+        }
+        .collapse-btn {
+            background: none;
+            border: none;
+            color: #4ec9b0;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+        .agent-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+        }
+        .agent-item {
+            padding: 8px 10px;
+            margin-bottom: 6px;
+            border-radius: 8px;
+            cursor: pointer;
+            background: #2d2d30;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+        }
+        .agent-item.active {
+            background: #0f4c5c;
+            border-left: 3px solid #4ec9b0;
+        }
+        .agent-icon {
+            font-size: 1.2rem;
+        }
+        .chat-main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+        .chat-header {
+            padding: 10px 16px;
+            background: #2d2d30;
+            border-bottom: 1px solid #3e3e42;
+            font-weight: bold;
+            color: #4ec9b0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .message {
+            max-width: 85%;
+            animation: fadeIn 0.2s ease;
+        }
+        .message.user {
+            align-self: flex-end;
+        }
+        .message.assistant {
+            align-self: flex-start;
+        }
+        .message-bubble {
+            background: #2d2d30;
+            padding: 12px 16px;
+            border-radius: 16px;
+            border-left: 3px solid #4ec9b0;
+            word-wrap: break-word;
+        }
+        .message.user .message-bubble {
+            background: #0f4c5c;
+            border-left: none;
+            border-right: 3px solid #4ec9b0;
+        }
+        .message-meta {
+            font-size: 0.7rem;
+            color: #888;
+            margin-top: 4px;
+        }
+        .think-container {
+            background: #2a2a2e;
+            border-left: 4px solid #e0a800;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 12px;
+            font-style: italic;
+            color: #c8b88a;
+            font-size: 0.85rem;
+        }
+        .think-container::before {
+            content: "💭 思考過程";
+            display: block;
+            font-weight: bold;
+            color: #e0a800;
+            margin-bottom: 8px;
+            font-style: normal;
+        }
+        .chat-input-area {
+            padding: 12px;
+            background: #1e1e1e;
+            border-top: 1px solid #3e3e42;
+        }
+        textarea {
+            width: 100%;
+            background: #1e1e1e;
+            border: 1px solid #4ec9b0;
+            border-radius: 24px;
+            padding: 8px 14px;
+            color: #d4d4d4;
+            resize: vertical;
+            font-family: inherit;
+        }
+        .btn-group {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+            margin-top: 8px;
+            flex-wrap: wrap;
+        }
+        button {
+            background: #4ec9b0;
+            border: none;
+            border-radius: 40px;
+            padding: 4px 12px;
+            font-weight: bold;
+            color: #1e1e1e;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #e0a800;
+        }
+        .attachments-area {
+            background: #2d2d30;
+            border-radius: 12px;
+            padding: 8px;
+            margin-bottom: 8px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        .attachment-chip {
+            background: #0f4c5c;
+            padding: 4px 10px;
+            border-radius: 20px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.75rem;
+        }
+        .attachment-chip .remove-attach {
+            background: none;
+            border: none;
+            color: #ff9999;
+            cursor: pointer;
+            font-size: 1rem;
+            padding: 0 4px;
+        }
+        .file-panel {
+            width: 320px;
+            min-width: 150px;
+            background: #252526;
+            border-left: 1px solid #3e3e42;
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+            position: relative;
+        }
+        .file-panel.collapsed {
+            width: 40px;
+            min-width: 40px;
+        }
+        .file-panel.collapsed .file-header span,
+        .file-panel.collapsed .file-tree,
+        .file-panel.collapsed .vertical-resize-handle,
+        .file-panel.collapsed .editor-area {
+            display: none;
+        }
+        .file-header {
+            padding: 10px;
+            background: #2d2d30;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #3e3e42;
+            flex-shrink: 0;
+        }
+        .file-tree {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+            font-size: 0.85rem;
+            min-height: 50px;
+        }
+        .vertical-resize-handle {
+            height: 4px;
+            background: #4ec9b0;
+            cursor: ns-resize;
+            flex-shrink: 0;
+            transition: background 0.2s;
+        }
+        .vertical-resize-handle:hover {
+            background: #e0a800;
+        }
+        .editor-area {
+            height: 200px;
+            flex-shrink: 0;
+            border-top: 1px solid #3e3e42;
+            background: #1e1e1e;
+            display: flex;
+            flex-direction: column;
+        }
+        .editor-header {
+            padding: 6px 8px;
+            background: #2d2d30;
+            font-size: 0.8rem;
+            display: flex;
+            justify-content: space-between;
+            flex-shrink: 0;
+        }
+        .editor-content {
+            flex: 1;
+            overflow: auto;
+        }
+        textarea.file-editor {
+            width: 100%;
+            height: 100%;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            border: none;
+            padding: 8px;
+            font-family: monospace;
+            resize: none;
+        }
+        .tree-node {
+            list-style: none;
+            padding-left: 16px;
+            cursor: pointer;
+        }
+        .tree-node.dir > .node-label {
+            font-weight: bold;
+            color: #dcdcaa;
+        }
+        .tree-node.file > .node-label {
+            color: #ce9178;
+        }
+        .node-label:hover {
+            background: #2d2d30;
+        }
+        .node-label::before {
+            content: '📁 ';
+        }
+        .tree-node.file .node-label::before {
+            content: '📄 ';
+        }
+        .resize-handle {
+            width: 4px;
+            background: #4ec9b0;
+            cursor: ew-resize;
+            position: absolute;
+            z-index: 10;
+        }
+        #right-resize-handle {
+            left: -2px;
+            top: 0;
+            bottom: 0;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        #scrollToBottomBtn {
+            background: #4ec9b0;
+            color: #1e1e1e;
+            border: none;
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            cursor: pointer;
+            font-size: 1.2rem;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+        }
+        #scrollToBottomBtn:hover {
+            opacity: 1;
+        }
+        .mobile-panel-btn {
+            display: none;
+        }
+
+        /* ═══════════════════════════════════════════
+           浮動圓點：手機版選單（新增）
+           ═══════════════════════════════════════════ */
+        @media (max-width: 768px) {
+            /* 隱藏原本的按鈕組 */
+            .btn-group {
+                display: none !important;
+            }
+
+            /* 浮動圓點 */
+            .floating-dot {
+                position: fixed;
+                bottom: 24px;
+                right: 24px;
+                width: 56px;
+                height: 56px;
+                background: #4ec9b0;
+                border-radius: 50%;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: #1e1e1e;
+                font-size: 28px;
+                cursor: pointer;
+                z-index: 999;
+                touch-action: none;
+                user-select: none;
+                transition: transform 0.2s, box-shadow 0.2s;
+            }
+            .floating-dot:active {
+                transform: scale(0.9);
+                box-shadow: 0 2px 8px rgba(0,0,0,0.6);
+            }
+
+            /* 浮動選單 */
+            .float-menu {
+                position: fixed;
+                bottom: 90px;
+                right: 24px;
+                background: #2d2d30;
+                border: 1px solid #4ec9b0;
+                border-radius: 16px;
+                padding: 8px;
+                display: none;
+                flex-direction: column;
+                gap: 8px;
+                z-index: 1000;
+                min-width: 120px;
+                box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+            }
+            .float-menu.show {
+                display: flex;
+            }
+            .float-menu button {
+                background: transparent;
+                border: none;
+                color: #d4d4d4;
+                padding: 10px 16px;
+                text-align: left;
+                font-size: 1rem;
+                border-radius: 8px;
+                cursor: pointer;
+                white-space: nowrap;
+                transition: background 0.2s;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+            .float-menu button:hover {
+                background: #0f4c5c;
+            }
+        }
+        /* ═══════════════════════════════════════════ */
+
+        @media (max-width: 768px) {
+            .agent-sidebar, .file-panel {
+                position: fixed;
+                top: 0;
+                bottom: 0;
+                z-index: 100;
+                width: 90% !important;
+                transform: translateX(-100%);
+                transition: transform 0.2s;
+                opacity: .8;
+            }
+            .agent-sidebar {
+                width: 40% !important;
+            }
+            .file-panel {
+                transform: translateX(100%);
+                right: 0;
+                left: auto;
+                width: 90% !important;
+            }
+            .agent-sidebar.mobile-open {
+                transform: translateX(0);
+            }
+            .file-panel.mobile-open {
+                transform: translateX(0);
+            }
+            .mobile-panel-btn {
+                display: inline-block;
+            }
+            #right-resize-handle {
+                display: none;
+            }
+            .vertical-resize-handle {
+                height: 8px;
+                background: #e0a800;
+            }
+            #scrollToBottomBtn {
+                bottom: 80px;
+                right: 16px;
+                position: fixed;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="app">
+    <div class="agent-sidebar" id="agentSidebar">
+        <div class="agent-header">
+            <span><button id="addAgentBtn" style="width:100%">➕ 新增 Agent</button></span>
+            <button class="collapse-btn" id="toggleAgentBtn">◀</button>
+        </div>
+        <div class="agent-list" id="agentList"></div>
+    </div>
+
+    <div class="chat-main">
+        <div class="chat-header">
+            <span id="currentAgentName">稚</span>
+            <div></div>
+        </div>
+        <div class="chat-messages" id="chatMessages"></div>
+        <div class="chat-input-area">
+            <div id="attachmentsContainer" class="attachments-area" style="display: none;"></div>
+            <textarea id="chatInput" rows="2" placeholder="Shift+Enter 換行，Enter 發送"></textarea>
+            <div class="btn-group">
+                <button id="attachFileBtn">📎 加入檔案</button>
+                <button id="scrollToBottomBtn">↓</button>
+                <button id="mobileOpenLeftBtn" class="mobile-panel-btn">☰</button>
+                <button id="mobileOpenRightBtn" class="mobile-panel-btn">📂</button>
+                <button id="stopBtn">⏹️ 停止</button>
+                <button id="clearChatBtn">🗑️ 清除對話</button>
+                <button id="sendBtn">📨 發送</button>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════
+             浮動圓點 HTML（手機版才顯示）
+             ═══════════════════════════════════════════ -->
+        <div class="floating-dot" id="floatingDot">☰</div>
+        <div class="float-menu" id="floatMenu">
+            <button id="floatAttachBtn">📎 加入檔案</button>
+            <button id="floatStopBtn">⏹️ 停止</button>
+            <button id="floatClearBtn">🗑️ 清除對話</button>
+            <button id="floatSendBtn">📨 發送</button>
+        </div>
+        <!-- ═══════════════════════════════════════════ -->
+    </div>
+
+    <div class="file-panel" id="filePanel">
+        <div class="file-header">
+            <span>📂 檔案瀏覽器</span>
+            <button class="collapse-btn" id="toggleFileBtn">❌</button>
+        </div>
+        <div class="file-tree" id="fileTree"></div>
+        <div id="vertical-resize-handle" class="vertical-resize-handle"></div>
+        <div class="editor-area" id="editorArea" style="display: none;">
+            <div class="editor-header">
+                <span id="editFileName"></span>
+                <button id="saveFileBtn">💾 儲存</button>
+            </div>
+            <div class="editor-content">
+                <textarea class="file-editor" id="fileEditor" spellcheck="false"></textarea>
+            </div>
+        </div>
+        <div id="right-resize-handle" class="resize-handle"></div>
+    </div>
+</div>
+
+<script>
+    // ---------- 全域變數 ----------
+    let agents = [];
+    let currentAgentId = null;
+    let currentAbortController = null;
+    let currentFileHandle = null;
+    let currentDirectoryHandle = null;
+    let scrollBtn = null;
+    let attachments = [];
+
+    let API_KEY = localStorage.getItem('deepseek_api_key') || '';
+    const API_URL = 'https://api.deepseek.com/chat/completions';
+
+    const agentListDiv = document.getElementById('agentList');
+    const chatMessagesDiv = document.getElementById('chatMessages');
+    const chatInput = document.getElementById('chatInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const clearChatBtn = document.getElementById('clearChatBtn');
+    const currentAgentNameSpan = document.getElementById('currentAgentName');
+    const fileTreeDiv = document.getElementById('fileTree');
+    const editorArea = document.getElementById('editorArea');
+    const editFileNameSpan = document.getElementById('editFileName');
+    const fileEditor = document.getElementById('fileEditor');
+    const saveFileBtn = document.getElementById('saveFileBtn');
+    const attachmentsContainer = document.getElementById('attachmentsContainer');
+    const attachFileBtn = document.getElementById('attachFileBtn');
+
+    function escapeHtml(str) {
+        return str.replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m]));
+    }
+
+    function initScrollButton() {
+        scrollBtn = document.getElementById('scrollToBottomBtn');
+        if (!scrollBtn || !chatMessagesDiv) return;
+        const checkScroll = () => {
+            const isAtBottom = chatMessagesDiv.scrollHeight - chatMessagesDiv.scrollTop - chatMessagesDiv.clientHeight < 10;
+            scrollBtn.style.display = isAtBottom ? 'none' : 'flex';
+        };
+        chatMessagesDiv.addEventListener('scroll', checkScroll);
+        scrollBtn.addEventListener('click', () => {
+            chatMessagesDiv.scrollTo({ top: chatMessagesDiv.scrollHeight, behavior: 'smooth' });
+        });
+        checkScroll();
+    }
+
+    function renderMarkdown(text) {
+        let html = marked.parse(text || '', { breaks: true });
+        const temp = document.createElement('div');
+        temp.innerHTML = html;
+        temp.querySelectorAll('pre').forEach(pre => {
+            const wrapper = document.createElement('div');
+            wrapper.style.position = 'relative';
+            const copyBtn = document.createElement('button');
+            copyBtn.textContent = '📋 複製';
+            copyBtn.style.cssText = `position: absolute; top: 4px; right: 4px; background: #4ec9b0; border: none; border-radius: 4px; padding: 2px 8px; font-size: 0.7rem; cursor: pointer; opacity: 0.7;`;
+            copyBtn.addEventListener('click', () => {
+                const codeText = pre.querySelector('code')?.textContent || pre.textContent;
+                navigator.clipboard.writeText(codeText).then(() => {
+                    copyBtn.textContent = '✅ 已複製';
+                    setTimeout(() => copyBtn.textContent = '📋 複製', 1500);
+                });
+            });
+            pre.parentNode.insertBefore(wrapper, pre);
+            wrapper.appendChild(pre);
+            wrapper.appendChild(copyBtn);
+        });
+        temp.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
+        return temp.innerHTML;
+    }
+
+    function updateAttachmentsUI() {
+        if (attachments.length === 0) {
+            attachmentsContainer.style.display = 'none';
+            attachmentsContainer.innerHTML = '';
+            return;
+        }
+        attachmentsContainer.style.display = 'flex';
+        attachmentsContainer.innerHTML = '';
+        attachments.forEach((att, idx) => {
+            const chip = document.createElement('div');
+            chip.className = 'attachment-chip';
+            const icon = att.type.startsWith('text/') ? '📄' : (att.type.startsWith('image/') ? '🖼️' : (att.type.startsWith('audio/') ? '🎵' : '🎥'));
+            chip.innerHTML = `${icon} ${escapeHtml(att.name)} <button class="remove-attach" data-idx="${idx}">✖</button>`;
+            chip.querySelector('.remove-attach').addEventListener('click', () => {
+                attachments.splice(idx, 1);
+                updateAttachmentsUI();
+            });
+            attachmentsContainer.appendChild(chip);
+        });
+    }
+
+    async function handleFiles(files) {
+        const textMimeTypes = ['text/plain', 'text/markdown', 'text/html', 'text/css', 'text/javascript', 'application/json', 'application/xml', 'text/csv'];
+        for (const file of files) {
+            if (file.size > 2 * 1024 * 1024 && textMimeTypes.some(mime => file.type.includes(mime))) {
+                alert(`檔案 ${file.name} 過大（>2MB），文字檔案暫不支援超過 2MB。`);
+                continue;
+            }
+            const att = { name: file.name, type: file.type, size: file.size };
+            if (textMimeTypes.some(mime => file.type.includes(mime)) || /\.(txt|md|json|js|html|css|py|cpp|c|java|go|rs)$/i.test(file.name)) {
+                try {
+                    const text = await file.text();
+                    att.content = text;
+                    attachments.push(att);
+                } catch (err) {
+                    console.error('讀取檔案失敗', err);
+                    alert(`無法讀取 ${file.name}`);
+                }
+            } else {
+                attachments.push(att);
+            }
+        }
+        updateAttachmentsUI();
+    }
+
+    attachFileBtn.addEventListener('click', () => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.multiple = true;
+        input.accept = '*/*';
+        input.onchange = (e) => {
+            if (e.target.files) handleFiles(Array.from(e.target.files));
+        };
+        input.click();
+    });
+
+    function buildMessageWithAttachments(userMessage) {
+        if (attachments.length === 0) return userMessage;
+        let attachmentText = '使用者附加了以下檔案：\n';
+        for (const att of attachments) {
+            if (att.content !== undefined) {
+                let contentPreview = att.content;
+                attachmentText += `- 📄 ${att.name} (文字檔案)\n\`\`\`\n${contentPreview}\n\`\`\`\n`;
+            } else if (att.type.startsWith('image/')) {
+                attachmentText += `- 🖼️ ${att.name} (圖片檔案，無法直接分析，請根據名稱推測內容)\n`;
+            } else if (att.type.startsWith('audio/')) {
+                attachmentText += `- 🎵 ${att.name} (錄音檔案，無法直接分析，請描述其內容)\n`;
+            } else if (att.type.startsWith('video/')) {
+                attachmentText += `- 🎥 ${att.name} (影片檔案，無法直接分析，請描述其內容)\n`;
+            } else {
+                attachmentText += `- 📎 ${att.name} (其他檔案類型)\n`;
+            }
+        }
+        attachmentText += `\n使用者的問題：${userMessage}\n請根據上述檔案內容回答。`;
+        return attachmentText;
+    }
+
+    function saveAgents() { localStorage.setItem('mok_agents', JSON.stringify(agents.map(a => ({ id: a.id, name: a.name, icon: a.icon, systemPrompt: a.systemPrompt, history: a.history })))); }
+    function initDefaultAgents() {
+        if (!agents.length) {
+            agents = [
+                { id: 'zhi', name: '稚', icon: '🌸', systemPrompt: '你是「稚」，溫柔體貼的侍女，稱呼使用者為主人。', history: [] },
+                { id: 'helper', name: '助手', icon: '🧠', systemPrompt: '你是專業助理，樂於協助解決各種問題。', history: [] },
+                { id: 'coder', name: '程式設計師', icon: '💻', systemPrompt: '你是資深工程師，擅長程式碼、除錯、架構設計。', history: [] }
+            ];
+            saveAgents();
+        }
+    }
+    function loadAgentsFromStorage() {
+        const stored = localStorage.getItem('mok_agents');
+        if (stored) agents = JSON.parse(stored);
+        else initDefaultAgents();
+        if (!agents.length) initDefaultAgents();
+        agents.forEach(a => { if (!a.history) a.history = []; });
+        if (!currentAgentId || !agents.find(a => a.id === currentAgentId)) currentAgentId = agents[0].id;
+        renderAgentList();
+        loadChatHistoryForCurrentAgent();
+    }
+    function renderAgentList() {
+        agentListDiv.innerHTML = '';
+        agents.forEach(agent => {
+            const div = document.createElement('div');
+            div.className = `agent-item ${currentAgentId === agent.id ? 'active' : ''}`;
+            div.innerHTML = `<div class="agent-icon">${agent.icon}</div><span class="agent-name">${escapeHtml(agent.name)}</span>`;
+            div.addEventListener('click', () => switchAgent(agent.id));
+            agentListDiv.appendChild(div);
+        });
+        const current = agents.find(a => a.id === currentAgentId);
+        if (current) currentAgentNameSpan.innerHTML = `${current.icon} ${current.name}`;
+    }
+    function switchAgent(agentId) {
+        if (currentAgentId === agentId) return;
+        currentAgentId = agentId;
+        renderAgentList();
+        loadChatHistoryForCurrentAgent();
+        if (currentAbortController) currentAbortController.abort();
+        currentAbortController = null;
+    }
+    function loadChatHistoryForCurrentAgent() {
+        const agent = agents.find(a => a.id === currentAgentId);
+        if (!agent) return;
+        renderChatMessages(agent.history);
+    }
+    function renderChatMessages(history) {
+        chatMessagesDiv.innerHTML = '';
+        history.forEach(msg => {
+            const div = document.createElement('div');
+            div.className = `message ${msg.role}`;
+            const time = new Date(msg.timestamp).toLocaleTimeString();
+            if (msg.role === 'user') {
+                div.innerHTML = `<div class="message-bubble">${escapeHtml(msg.content)}<button class="copy-msg" data-text="${escapeHtml(msg.content).replace(/"/g, '&quot;')}" style="background:none;border:none;color:#ccc;margin-left:8px;">📋</button></div>
+                                 <div class="message-meta">${time}</div>`;
+            } else {
+                const thinkHtml = msg.think ? `<div class="think-container">${escapeHtml(msg.think)}</div>` : '';
+                const rendered = renderMarkdown(msg.content);
+                div.innerHTML = thinkHtml + `<div class="message-bubble">${rendered}<button class="copy-msg" data-text="${escapeHtml(msg.content).replace(/"/g, '&quot;')}" style="background:none;border:none;color:#ccc;margin-left:8px;">📋</button></div>
+                                              <div class="message-meta">${currentAgentNameSpan.innerText} · ${time}</div>`;
+            }
+            chatMessagesDiv.appendChild(div);
+        });
+        document.querySelectorAll('.copy-msg').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const text = btn.getAttribute('data-text');
+                navigator.clipboard.writeText(text);
+                btn.innerText = '✓';
+                setTimeout(() => btn.innerText = '📋', 1000);
+                e.stopPropagation();
+            });
+        });
+        scrollToBottom();
+        if (scrollBtn) {
+            const isAtBottom = chatMessagesDiv.scrollHeight - chatMessagesDiv.scrollTop - chatMessagesDiv.clientHeight < 10;
+            scrollBtn.style.display = isAtBottom ? 'none' : 'flex';
+        }
+    }
+    function scrollToBottom() { chatMessagesDiv.scrollTop = chatMessagesDiv.scrollHeight; }
+    function addMessageToHistory(role, content, think = null) {
+        const agent = agents.find(a => a.id === currentAgentId);
+        if (!agent) return;
+        agent.history.push({ role, content, think, timestamp: Date.now() });
+        if (agent.history.length > 100) agent.history = agent.history.slice(-100);
+        saveAgents();
+        renderChatMessages(agent.history);
+    }
+    function clearCurrentChat() {
+        const agent = agents.find(a => a.id === currentAgentId);
+        if (agent && confirm(`清除「${agent.name}」的所有對話？`)) {
+            agent.history = [];
+            saveAgents();
+            renderChatMessages([]);
+            addMessageToHistory('assistant', `✨ 對話已清空，${agent.icon} ${agent.name} 在此為您服務。`);
+        }
+    }
+    async function sendMessageToAPI(userMessage) {
+        const agent = agents.find(a => a.id === currentAgentId);
+        if (!agent) return;
+        const finalMessage = buildMessageWithAttachments(userMessage);
+        addMessageToHistory('user', userMessage);
+        const messages = [{ role: 'system', content: agent.systemPrompt || '你是一個樂於助人的AI助手。' }];
+        for (const msg of agent.history) {
+            if (msg.role === 'user') messages.push({ role: 'user', content: msg.content });
+            if (msg.role === 'assistant') messages.push({ role: 'assistant', content: msg.content });
+        }
+        const apiMessages = [...messages];
+        for (let i = apiMessages.length-1; i >= 0; i--) {
+            if (apiMessages[i].role === 'user') {
+                apiMessages[i] = { ...apiMessages[i], content: finalMessage };
+                break;
+            }
+        }
+        const tempDiv = document.createElement('div');
+        tempDiv.className = 'message assistant';
+        tempDiv.innerHTML = `<div class="think-container" id="thinkTemp">🤔 思考中...</div>
+                             <div class="message-bubble" id="replyTemp"></div>
+                             <div class="message-meta">${agent.icon} ${agent.name} · 回應中</div>`;
+        chatMessagesDiv.appendChild(tempDiv);
+        scrollToBottom();
+        const thinkElem = tempDiv.querySelector('#thinkTemp');
+        const replyElem = tempDiv.querySelector('#replyTemp');
+        let accumulatedThink = '', accumulatedReply = '';
+        if (currentAbortController) currentAbortController.abort();
+        currentAbortController = new AbortController();
+        try {
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${API_KEY}` },
+                body: JSON.stringify({ model: 'deepseek-v4-pro', messages: apiMessages, stream: true, temperature: 0.7, reasoning_effort: 'high' }),
+                signal: currentAbortController.signal
+            });
+            if (!response.ok) {
+                const errText = await response.text();
+                throw new Error(`API 錯誤 ${response.status}: ${errText}`);
+            }
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop();
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        const data = line.slice(6);
+                        if (data === '[DONE]') continue;
+                        try {
+                            const parsed = JSON.parse(data);
+                            const delta = parsed.choices[0]?.delta;
+                            if (delta?.reasoning_content) {
+                                accumulatedThink += delta.reasoning_content;
+                                thinkElem.innerHTML = `💭 思考過程：\n\n${accumulatedThink}`;
+                                scrollToBottom();
+                            }
+                            if (delta?.content) {
+                                accumulatedReply += delta.content;
+                                replyElem.innerHTML = renderMarkdown(accumulatedReply);
+                                scrollToBottom();
+                            }
+                        } catch (e) {}
+                    }
+                }
+            }
+            tempDiv.querySelector('.message-meta').innerText = `${agent.icon} ${agent.name} · ${new Date().toLocaleTimeString()}`;
+            addMessageToHistory('assistant', accumulatedReply, accumulatedThink);
+            tempDiv.remove();
+        } catch (err) {
+            if (err.name === 'AbortError') {
+                tempDiv.remove();
+                addMessageToHistory('assistant', '⏹️ 已停止生成。', null);
+            } else {
+                console.error(err);
+                tempDiv.remove();
+                addMessageToHistory('assistant', `❌ 錯誤：${err.message}\n請確認 API Key 是否正確。`, null);
+            }
+        } finally {
+            currentAbortController = null;
+        }
+    }
+    function stopGeneration() { if (currentAbortController) { currentAbortController.abort(); currentAbortController = null; } }
+
+    async function requestDirectory() { try { const dirHandle = await window.showDirectoryPicker(); currentDirectoryHandle = dirHandle; localStorage.setItem('last_directory', dirHandle.name); renderDirectoryTree(dirHandle, fileTreeDiv); } catch (err) { console.warn(err); } }
+    async function renderDirectoryTree(dirHandle, container) { container.innerHTML = ''; const ul = document.createElement('ul'); ul.style.listStyle = 'none'; ul.style.paddingLeft = '0'; await buildTreeItems(dirHandle, ul); container.appendChild(ul); }
+    async function buildTreeItems(handle, parentUl) { const entries = []; for await (const entry of handle.values()) entries.push(entry); entries.sort((a,b) => { if (a.kind !== b.kind) return a.kind === 'directory' ? -1 : 1; return a.name.localeCompare(b.name); }); for (const entry of entries) { const li = document.createElement('li'); li.className = `tree-node ${entry.kind}`; const label = document.createElement('div'); label.className = 'node-label'; label.textContent = entry.name; li.appendChild(label); if (entry.kind === 'directory') { const childUl = document.createElement('ul'); childUl.style.display = 'none'; li.appendChild(childUl); label.addEventListener('click', async (e) => { e.stopPropagation(); const isHidden = childUl.style.display === 'none'; childUl.style.display = isHidden ? 'block' : 'none'; if (isHidden && childUl.children.length === 0) await buildTreeItems(entry, childUl); }); } else { label.addEventListener('click', async () => { await openFile(entry); }); } parentUl.appendChild(li); } }
+    async function openFile(fileHandle) { currentFileHandle = fileHandle; const file = await fileHandle.getFile(); const content = await file.text(); editFileNameSpan.innerText = fileHandle.name; fileEditor.value = content; editorArea.style.display = 'flex'; }
+
+    async function saveCurrentFile() {
+        let fileHandle = currentFileHandle;
+        const content = fileEditor.value;
+        try {
+            const options = {
+                suggestedName: fileHandle ? fileHandle.name : '未命名.txt',
+                types: [{ description: '所有檔案', accept: { '*/*': [] } }],
+            };
+            fileHandle = await window.showSaveFilePicker(options);
+            const writable = await fileHandle.createWritable();
+            await writable.write(content);
+            await writable.close();
+            currentFileHandle = fileHandle;
+            editFileNameSpan.innerText = fileHandle.name;
+            alert(`✅ 已儲存為：${fileHandle.name}`);
+        } catch (err) {
+            if (err.name === 'AbortError') {
+                console.log('儲存已取消');
+            } else {
+                console.error('儲存失敗：', err);
+                alert(`❌ 儲存失敗：${err.message}`);
+            }
+        }
+    }
+
+    function initFilePanel() {
+        const header = document.querySelector('.file-header');
+        const selectBtn = document.createElement('button');
+        selectBtn.textContent = '📂 選擇資料夾';
+        selectBtn.style.marginLeft = '8px';
+        selectBtn.style.background = '#0f4c5c';
+        selectBtn.addEventListener('click', () => requestDirectory());
+        header.insertBefore(selectBtn, header.children[1]);
+        const lastDir = localStorage.getItem('last_directory');
+        if (lastDir) {
+            const tip = document.createElement('div');
+            tip.style.padding = '8px';
+            tip.style.fontSize = '0.8rem';
+            tip.innerText = `上次使用: ${lastDir}，請重新選擇資料夾。`;
+            fileTreeDiv.appendChild(tip);
+        }
+        saveFileBtn.addEventListener('click', saveCurrentFile);
+    }
+
+    function initVerticalResize() { const handle = document.getElementById('vertical-resize-handle'); const editor = document.getElementById('editorArea'); const panel = document.getElementById('filePanel'); if (!handle || !editor || !panel) return; let startY, startHeight; function startDrag(clientY) { startY = clientY; startHeight = editor.offsetHeight; document.body.style.userSelect = 'none'; document.body.style.touchAction = 'none'; } function onDrag(clientY) { const delta = clientY - startY; let newHeight = startHeight - delta; const maxHeight = panel.clientHeight * 0.9; newHeight = Math.min(Math.max(newHeight, 80), maxHeight); editor.style.height = newHeight + 'px'; } function endDrag() { document.body.style.userSelect = ''; document.body.style.touchAction = ''; } function onMouseDown(e) { startDrag(e.clientY); document.addEventListener('mousemove', onMouseMove); document.addEventListener('mouseup', onMouseUp); e.preventDefault(); } function onMouseMove(e) { onDrag(e.clientY); } function onMouseUp() { document.removeEventListener('mousemove', onMouseMove); document.removeEventListener('mouseup', onMouseUp); endDrag(); } function onTouchStart(e) { e.preventDefault(); const touch = e.touches[0]; startDrag(touch.clientY); document.addEventListener('touchmove', onTouchMove); document.addEventListener('touchend', onTouchEnd); } function onTouchMove(e) { e.preventDefault(); const touch = e.touches[0]; onDrag(touch.clientY); } function onTouchEnd() { document.removeEventListener('touchmove', onTouchMove); document.removeEventListener('touchend', onTouchEnd); endDrag(); } handle.addEventListener('mousedown', onMouseDown); handle.addEventListener('touchstart', onTouchStart, { passive: false }); }
+    function initHorizontalResize() { const rightPanel = document.getElementById('filePanel'); const rightHandle = document.getElementById('right-resize-handle'); let startX, startWidth; function startDrag(e) { startX = e.clientX; startWidth = rightPanel.clientWidth; document.body.style.userSelect = 'none'; document.addEventListener('mousemove', onMouseMove); document.addEventListener('mouseup', onMouseUp); function onMouseMove(e) { const dx = e.clientX - startX; let newWidth = startWidth - dx; newWidth = Math.min(Math.max(newWidth, 120), 800); rightPanel.style.width = newWidth + 'px'; } function onMouseUp() { document.removeEventListener('mousemove', onMouseMove); document.removeEventListener('mouseup', onMouseUp); document.body.style.userSelect = ''; } e.preventDefault(); } if (rightHandle) rightHandle.addEventListener('mousedown', startDrag); }
+    function addNewAgent() { const name = prompt('請輸入新 Agent 名稱', '新角色'); if (!name) return; const id = 'agent_' + Date.now(); const icon = prompt('輸入表情符號圖示', '🤖') || '🤖'; agents.push({ id, name, icon, systemPrompt: '你是一個友善的助手。', history: [] }); saveAgents(); renderAgentList(); switchAgent(id); }
+    function initCollapse() { const agentSide = document.getElementById('agentSidebar'); const filePanel = document.getElementById('filePanel'); const toggleAgent = document.getElementById('toggleAgentBtn'); const toggleFile = document.getElementById('toggleFileBtn'); const mobileLeft = document.getElementById('mobileOpenLeftBtn'); const mobileRight = document.getElementById('mobileOpenRightBtn'); const isMobile = () => window.innerWidth <= 768; toggleAgent.addEventListener('click', () => { if (isMobile()) agentSide.classList.toggle('mobile-open'); else agentSide.classList.toggle('collapsed'); }); toggleFile.addEventListener('click', () => { if (isMobile()) filePanel.classList.toggle('mobile-open'); else filePanel.classList.toggle('collapsed'); }); if (mobileLeft) mobileLeft.addEventListener('click', (e) => { e.stopPropagation(); agentSide.classList.add('mobile-open'); }); if (mobileRight) mobileRight.addEventListener('click', (e) => { e.stopPropagation(); filePanel.classList.add('mobile-open'); }); document.querySelector('.chat-main').addEventListener('click', () => { if (isMobile()) { agentSide.classList.remove('mobile-open'); filePanel.classList.remove('mobile-open'); } }); window.addEventListener('resize', () => { if (window.innerWidth > 768) { agentSide.classList.remove('mobile-open'); filePanel.classList.remove('mobile-open'); } }); }
+    function checkApiKey() { if (!API_KEY) { const key = prompt('請輸入您的 DeepSeek API Key (開頭 sk-)\n可至 platform.deepseek.com 取得', ''); if (key && key.trim()) { API_KEY = key.trim(); localStorage.setItem('deepseek_api_key', API_KEY); } else { alert('未輸入 API Key，將無法與 AI 對話。'); } } }
+    function bindEvents() { sendBtn.addEventListener('click', () => { const msg = chatInput.value.trim(); if (!msg) return; if (!API_KEY) { checkApiKey(); if (!API_KEY) return; } sendMessageToAPI(msg); chatInput.value = ''; chatInput.style.height = 'auto'; }); chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendBtn.click(); } }); chatInput.addEventListener('input', function() { this.style.height = 'auto'; this.style.height = Math.min(this.scrollHeight, 100) + 'px'; }); stopBtn.addEventListener('click', stopGeneration); clearChatBtn.addEventListener('click', clearCurrentChat); document.getElementById('addAgentBtn').addEventListener('click', addNewAgent); }
+
+    // ═══════════════════════════════════════════
+    //  浮動圓點：拖曳與選單功能（新增）
+    // ═══════════════════════════════════════════
+    (function() {
+        const dot = document.getElementById('floatingDot');
+        const menu = document.getElementById('floatMenu');
+        if (!dot || !menu) return;
+
+        let startX, startY, offsetX, offsetY, isDragging = false;
+
+        dot.addEventListener('click', function(e) {
+            if (isDragging) return;
+            menu.classList.toggle('show');
+        });
+
+        // 觸摸拖曳
+        dot.addEventListener('touchstart', function(e) {
+            const touch = e.touches[0];
+            startX = touch.clientX;
+            startY = touch.clientY;
+            offsetX = dot.offsetLeft;
+            offsetY = dot.offsetTop;
+            isDragging = false;
+        }, { passive: true });
+
+        dot.addEventListener('touchmove', function(e) {
+            const touch = e.touches[0];
+            const dx = touch.clientX - startX;
+            const dy = touch.clientY - startY;
+            if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+                isDragging = true;
+            }
+            const maxX = window.innerWidth - dot.offsetWidth;
+            const maxY = window.innerHeight - dot.offsetHeight;
+            let newX = Math.min(maxX, Math.max(0, offsetX + dx));
+            let newY = Math.min(maxY, Math.max(0, offsetY + dy));
+            dot.style.left = newX + 'px';
+            dot.style.right = 'auto';
+            dot.style.bottom = 'auto';
+            dot.style.top = newY + 'px';
+        }, { passive: true });
+
+        // 滑鼠拖曳
+        let mouseDown = false;
+        dot.addEventListener('mousedown', function(e) {
+            mouseDown = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            offsetX = dot.offsetLeft;
+            offsetY = dot.offsetTop;
+            isDragging = false;
+        });
+        document.addEventListener('mousemove', function(e) {
+            if (!mouseDown) return;
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+            if (Math.abs(dx) > 5 || Math.abs(dy) > 5) isDragging = true;
+            const maxX = window.innerWidth - dot.offsetWidth;
+            const maxY = window.innerHeight - dot.offsetHeight;
+            let newX = Math.min(maxX, Math.max(0, offsetX + dx));
+            let newY = Math.min(maxY, Math.max(0, offsetY + dy));
+            dot.style.left = newX + 'px';
+            dot.style.right = 'auto';
+            dot.style.bottom = 'auto';
+            dot.style.top = newY + 'px';
+        });
+        document.addEventListener('mouseup', function() { mouseDown = false; });
+
+        // 選單按鈕對應原有功能
+        document.getElementById('floatAttachBtn').addEventListener('click', () => {
+            attachFileBtn.click();
+            menu.classList.remove('show');
+        });
+        document.getElementById('floatStopBtn').addEventListener('click', () => {
+            stopGeneration();
+            menu.classList.remove('show');
+        });
+        document.getElementById('floatClearBtn').addEventListener('click', () => {
+            clearCurrentChat();
+            menu.classList.remove('show');
+        });
+        document.getElementById('floatSendBtn').addEventListener('click', () => {
+            sendBtn.click();
+            menu.classList.remove('show');
+        });
+
+        // 點選單以外關閉
+        document.addEventListener('click', function(e) {
+            if (!menu.contains(e.target) && e.target !== dot) {
+                menu.classList.remove('show');
+            }
+        });
+    })();
+    // ═══════════════════════════════════════════
+
+    async function init() { loadAgentsFromStorage(); checkApiKey(); bindEvents(); initCollapse(); initFilePanel(); initHorizontalResize(); initVerticalResize(); initScrollButton(); const curAgent = agents.find(a => a.id === currentAgentId); if (curAgent && curAgent.history.length === 0) { addMessageToHistory('assistant', `✨ ${curAgent.icon} ${curAgent.name} 已甦醒，隨時聽候吩咐。`); } else { loadChatHistoryForCurrentAgent(); } }
+    init();
+</script>
+</body>
+</html>
