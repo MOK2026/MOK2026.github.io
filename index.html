@@ -29,7 +29,7 @@
         /* 左側 Agent 側邊欄 */
         .agent-sidebar {
             width: 260px;
-            min-width: 100px;
+            min-width: 60px;
             background: #252526;
             border-right: 1px solid #3e3e42;
             display: flex;
@@ -39,7 +39,7 @@
             position: relative;
         }
         .agent-sidebar.collapsed {
-            width: 100px;
+            width: 60px;
         }
         .agent-sidebar.collapsed .agent-name,
         .agent-sidebar.collapsed .agent-header span {
@@ -138,19 +138,19 @@
         }
         .think-container {
             background: #2a2a2e;
-            border-left: 4px solid #e0a800;
+            border-left: 4px solid #10d8df;
             border-radius: 8px;
             padding: 12px 16px;
             margin-bottom: 12px;
             font-style: italic;
-            color: #c8b88a;
+            color: #10d8df;
             font-size: 0.85rem;
         }
         .think-container::before {
             content: "💭 思考過程";
             display: block;
             font-weight: bold;
-            color: #e0a800;
+            color: #10d8df;
             margin-bottom: 8px;
             font-style: normal;
         }
@@ -186,7 +186,7 @@
             cursor: pointer;
         }
         button:hover {
-            background: #e0a800;
+            background: #10d8df;
         }
         /* 附件區域 */
         .attachments-area {
@@ -210,7 +210,7 @@
         .attachment-chip .remove-attach {
             background: none;
             border: none;
-            color: #ff9999;
+            color: #10d8df;
             cursor: pointer;
             font-size: 1rem;
             padding: 0 4px;
@@ -260,7 +260,7 @@
             transition: background 0.2s;
         }
         .vertical-resize-handle:hover {
-            background: #e0a800;
+            background: #10d8df;
         }
         .editor-area {
             height: 200px;
@@ -299,7 +299,7 @@
         }
         .tree-node.dir > .node-label {
             font-weight: bold;
-            color: #dcdcaa;
+            color: #0f585a;
         }
         .tree-node.file > .node-label {
             color: #ce9178;
@@ -384,14 +384,36 @@
             }
             .vertical-resize-handle {
                 height: 8px;
-                background: #e0a800;
-            }
-            #scrollToBottomBtn {
-                bottom: 80px;
-                right: 16px;
-                position: fixed;
+                background: #10d8df;
             }
         }
+
+        /* 拖放提示區域 */
+        .chat-input-area.drag-over {
+            border: 2px dashed #e0a800;
+            background: rgba(15, 76, 92, 0.3);
+            transition: border 0.2s, background 0.2s;
+        }
+        .chat-input-area .drag-hint {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(30,30,30,0.85);
+            color: #4ec9b0;
+            font-size: 1.2rem;
+            font-weight: bold;
+            border-radius: 12px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+            z-index: 10;
+        }
+        .chat-input-area.drag-over .drag-hint {
+            opacity: 1;
+        }
+
     </style>
 </head>
 <body>
@@ -414,6 +436,7 @@
         <div class="chat-messages" id="chatMessages"></div>
         <div class="chat-input-area">
             <div id="attachmentsContainer" class="attachments-area" style="display: none;"></div>
+            <div class="drag-hint">📁 放開以加入檔案</div>
             <textarea id="chatInput" rows="2" placeholder="Shift+Enter 換行，Enter 發送"></textarea>
             <div class="btn-group">
                 <button id="attachFileBtn">📎</button>
@@ -672,7 +695,7 @@ function renderMarkdown(text) {
             if (att.content !== undefined) {
                 // 文字檔案，附上完整內容（限制前 5000 字節避免過長）
                 let contentPreview = att.content;
-                if (contentPreview.length > 5000) contentPreview = contentPreview.substring(0, 5000) + '\n...(內容過長，已截斷)';
+                //if (contentPreview.length > 5000) contentPreview = contentPreview.substring(0, 5000) + '\n...(內容過長，已截斷)';
                 attachmentText += `- 📄 ${att.name} (文字檔案)\n\`\`\`\n${contentPreview}\n\`\`\`\n`;
             } else if (att.type.startsWith('image/')) {
                 attachmentText += `- 🖼️ ${att.name} (圖片檔案，無法直接分析，請根據名稱推測內容)\n`;
@@ -836,20 +859,26 @@ function renderMarkdown(text) {
             }
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
+
+            // ---------- 將原本 while (true) 迴圈內的內容取代為此 ----------
             let buffer = '';
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
+                
                 buffer += decoder.decode(value, { stream: true });
                 const lines = buffer.split('\n');
                 buffer = lines.pop();
+                
                 for (const line of lines) {
                     if (line.startsWith('data: ')) {
                         const data = line.slice(6);
                         if (data === '[DONE]') continue;
+                        
                         try {
                             const parsed = JSON.parse(data);
                             const delta = parsed.choices[0]?.delta;
+                            
                             if (delta?.reasoning_content) {
                                 accumulatedThink += delta.reasoning_content;
                                 thinkElem.innerHTML = `💭 思考過程：\n\n${accumulatedThink}`;
@@ -857,13 +886,19 @@ function renderMarkdown(text) {
                             }
                             if (delta?.content) {
                                 accumulatedReply += delta.content;
-                                replyElem.innerHTML = renderMarkdown(accumulatedReply);
+                                // ✅ 關鍵修正：串流期間只顯示純文字，避免卡頓
+                                replyElem.textContent = accumulatedReply;
                                 scrollToBottom();
                             }
                         } catch (e) {}
                     }
                 }
             }
+
+            // ✅ 串流結束後，才進行一次完整的 Markdown 渲染（含程式碼高亮）
+            replyElem.innerHTML = renderMarkdown(accumulatedReply);
+            // --------------------------------------------
+
             tempDiv.querySelector('.message-meta').innerText = `${agent.icon} ${agent.name} · ${new Date().toLocaleTimeString()}`;
             addMessageToHistory('assistant', accumulatedReply, accumulatedThink);
             tempDiv.remove();
@@ -973,7 +1008,48 @@ function initFilePanel() {
     function addNewAgent() { const name = prompt('請輸入新 Agent 名稱', '新角色'); if (!name) return; const id = 'agent_' + Date.now(); const icon = prompt('輸入表情符號圖示', '🤖') || '🤖'; agents.push({ id, name, icon, systemPrompt: '你是一個友善的助手。', history: [] }); saveAgents(); renderAgentList(); switchAgent(id); }
     function initCollapse() { const agentSide = document.getElementById('agentSidebar'); const filePanel = document.getElementById('filePanel'); const toggleAgent = document.getElementById('toggleAgentBtn'); const toggleFile = document.getElementById('toggleFileBtn'); const mobileLeft = document.getElementById('mobileOpenLeftBtn'); const mobileRight = document.getElementById('mobileOpenRightBtn'); const isMobile = () => window.innerWidth <= 768; toggleAgent.addEventListener('click', () => { if (isMobile()) agentSide.classList.toggle('mobile-open'); else agentSide.classList.toggle('collapsed'); }); toggleFile.addEventListener('click', () => { if (isMobile()) filePanel.classList.toggle('mobile-open'); else filePanel.classList.toggle('collapsed'); }); if (mobileLeft) mobileLeft.addEventListener('click', (e) => { e.stopPropagation(); agentSide.classList.add('mobile-open'); }); if (mobileRight) mobileRight.addEventListener('click', (e) => { e.stopPropagation(); filePanel.classList.add('mobile-open'); }); document.querySelector('.chat-main').addEventListener('click', () => { if (isMobile()) { agentSide.classList.remove('mobile-open'); filePanel.classList.remove('mobile-open'); } }); window.addEventListener('resize', () => { if (window.innerWidth > 768) { agentSide.classList.remove('mobile-open'); filePanel.classList.remove('mobile-open'); } }); }
     function checkApiKey() { if (!API_KEY) { const key = prompt('請輸入您的 DeepSeek API Key (開頭 sk-)\n可至 platform.deepseek.com 取得', ''); if (key && key.trim()) { API_KEY = key.trim(); localStorage.setItem('deepseek_api_key', API_KEY); } else { alert('未輸入 API Key，將無法與 AI 對話。'); } } }
-    function bindEvents() { sendBtn.addEventListener('click', () => { const msg = chatInput.value.trim(); if (!msg) return; if (!API_KEY) { checkApiKey(); if (!API_KEY) return; } sendMessageToAPI(msg); chatInput.value = ''; chatInput.style.height = 'auto'; }); chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendBtn.click(); } }); chatInput.addEventListener('input', function() { this.style.height = 'auto'; this.style.height = Math.min(this.scrollHeight, 100) + 'px'; }); stopBtn.addEventListener('click', stopGeneration); clearChatBtn.addEventListener('click', clearCurrentChat); document.getElementById('addAgentBtn').addEventListener('click', addNewAgent); }
+    function bindEvents() { 
+        
+        
+        // ---------- 拖放檔案 ----------
+        const chatInputArea = document.querySelector('.chat-input-area');
+
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            chatInputArea.addEventListener(eventName, preventDragDefaults, false);
+            document.body.addEventListener(eventName, preventDragDefaults, false);
+        });
+        function preventDragDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        // 視覺回饋（當檔案拖入聊天輸入區時高亮）
+        chatInputArea.addEventListener('dragenter', (e) => {
+            // 只對含有檔案（非文字/連結）的拖入才顯示
+            if (e.dataTransfer.types.includes('Files')) {
+                chatInputArea.classList.add('drag-over');
+            }
+        });
+        chatInputArea.addEventListener('dragover', (e) => {
+            // 必須要有，否則 drop 不會觸發
+        });
+        chatInputArea.addEventListener('dragleave', (e) => {
+            // 檢查滑鼠是否真的離開元素（避免子元素觸發誤判）
+            if (!chatInputArea.contains(e.relatedTarget)) {
+                chatInputArea.classList.remove('drag-over');
+            }
+        });
+        chatInputArea.addEventListener('drop', (e) => {
+            chatInputArea.classList.remove('drag-over');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                // 直接使用現有的 handleFiles 函數
+                handleFiles(Array.from(files));
+                // 可選：如果沒有輸入文字，自動聚焦 textarea
+                document.getElementById('chatInput').focus();
+            }
+        });
+        sendBtn.addEventListener('click', () => { const msg = chatInput.value.trim(); if (!msg) return; if (!API_KEY) { checkApiKey(); if (!API_KEY) return; } sendMessageToAPI(msg); chatInput.value = ''; chatInput.style.height = 'auto'; }); chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendBtn.click(); } }); chatInput.addEventListener('input', function() { this.style.height = 'auto'; this.style.height = Math.min(this.scrollHeight, 100) + 'px'; }); stopBtn.addEventListener('click', stopGeneration); clearChatBtn.addEventListener('click', clearCurrentChat); document.getElementById('addAgentBtn').addEventListener('click', addNewAgent); }
     async function init() { loadAgentsFromStorage(); checkApiKey(); bindEvents(); initCollapse(); initFilePanel(); initHorizontalResize(); initVerticalResize(); initScrollButton(); const curAgent = agents.find(a => a.id === currentAgentId); if (curAgent && curAgent.history.length === 0) { addMessageToHistory('assistant', `✨ ${curAgent.icon} ${curAgent.name} 已甦醒，隨時聽候吩咐。`); } else { loadChatHistoryForCurrentAgent(); } }
     init();
 </script>
