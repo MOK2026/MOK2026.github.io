@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>稚 · 3D 街道</title>
+    <!-- Three.js 核心與輔助庫 -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/"
+            }
+        }
+    </script>
+    <!-- 原本的 Markdown 與高亮 -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { overflow: hidden; background: #1a1a2e; font-family: 'Segoe UI', sans-serif; }
+        #game-container { width: 100vw; height: 100vh; display: block; }
+        #ui-overlay {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+        #ui-overlay > * { pointer-events: auto; }
+
+        /* 新增按鈕 */
+        #add-agent-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: #4ec9b0;
+            border: none;
+            border-radius: 30px;
+            padding: 10px 20px;
+            font-weight: bold;
+            color: #1a1a2e;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            transition: 0.2s;
+            font-size: 1rem;
+        }
+        #add-agent-btn:hover { background: #10d8df; transform: scale(1.05); }
+
+        /* 對話視窗 (浮層) */
+        #chat-overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            max-width: 500px;
+            height: 60%;
+            background: rgba(30,30,40,0.95);
+            backdrop-filter: blur(8px);
+            border-radius: 20px 20px 0 0;
+            display: none;
+            flex-direction: column;
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
+            pointer-events: auto;
+            margin: 0 auto;
+            left: 50%;
+            transform: translateX(-50%);
+            overflow: hidden;
+        }
+        #chat-overlay.open { display: flex; }
+
+        #chat-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 16px;
+            background: #2d2d30;
+            border-bottom: 1px solid #3e3e42;
+            color: #4ec9b0;
+            font-weight: bold;
+        }
+        #chat-header span { font-size: 1rem; }
+        #close-chat-btn {
+            background: none;
+            border: none;
+            color: #f55;
+            font-size: 1.5rem;
+            cursor: pointer;
+        }
+        #chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .message {
+            max-width: 85%;
+            animation: fadeIn 0.2s ease;
+        }
+        .message.user { align-self: flex-end; }
+        .message.assistant { align-self: flex-start; }
+        .message-bubble {
+            background: #2d2d30;
+            padding: 10px 14px;
+            border-radius: 14px;
+            border-left: 3px solid #4ec9b0;
+            word-wrap: break-word;
+            font-size: 0.9rem;
+            color: #d4d4d4;
+        }
+        .message.user .message-bubble {
+            background: #0f4c5c;
+            border-left: none;
+            border-right: 3px solid #4ec9b0;
+        }
+        .think-container {
+            background: #2a2a2e;
+            border-left: 4px solid #10d8df;
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-style: italic;
+            color: #10d8df;
+            font-size: 0.8rem;
+            margin-bottom: 8px;
+        }
+        .message-meta {
+            font-size: 0.7rem;
+            color: #888;
+            margin-top: 2px;
+        }
+        #chat-input-area {
+            padding: 10px 12px;
+            background: #1e1e1e;
+            border-top: 1px solid #3e3e42;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        #chat-input-area textarea {
+            flex: 1;
+            background: #1e1e1e;
+            border: 1px solid #4ec9b0;
+            border-radius: 24px;
+            padding: 8px 14px;
+            color: #d4d4d4;
+            font-family: inherit;
+            resize: none;
+            height: 40px;
+            font-size: 0.9rem;
+        }
+        #chat-input-area button {
+            background: #4ec9b0;
+            border: none;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            font-weight: bold;
+            color: #1e1e1e;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+        #chat-input-area button:hover { background: #10d8df; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* 手機優化 */
+        @media (max-width: 600px) {
+            #chat-overlay { max-width: 100%; height: 70%; border-radius: 16px 16px 0 0; }
+            #add-agent-btn { top: 10px; right: 10px; padding: 8px 16px; font-size: 0.9rem; }
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container"></div>
+    <div id="ui-overlay">
+        <button id="add-agent-btn">➕ 新增路人</button>
+        <div id="chat-overlay">
+            <div id="chat-header">
+                <span id="chat-target-name">👤 路人</span>
+                <button id="close-chat-btn">✕</button>
+            </div>
+            <div id="chat-messages"></div>
+            <div id="chat-input-area">
+                <textarea id="chat-input" rows="1" placeholder="按 Enter 發送"></textarea>
+                <button id="send-chat-btn">📨</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+        // ---------- 全域狀態 ----------
+        let agents = [];
+        let currentChatAgent = null; // 目前對話的 agent 物件
+        let scene, camera, renderer, labelRenderer, controls;
+        let agentMeshes = [];        // 存放所有3D小人 { mesh, label, agentRef, target }
+        let clock = new THREE.Clock();
+
+        // chat DOM
+        const chatOverlay = document.getElementById('chat-overlay');
+        const closeChatBtn = document.getElementById('close-chat-btn');
+        const chatMessages = document.getElementById('chat-messages');
+        const chatInput = document.getElementById('chat-input');
+        const sendChatBtn = document.getElementById('send-chat-btn');
+        const chatTargetName = document.getElementById('chat-target-name');
+        const addAgentBtn = document.getElementById('add-agent-btn');
+
+        // ---------- Agent 資料 (與 localStorage 同步，初始沿用原本的結構) ----------
+        function loadAgents() {
+            const stored = localStorage.getItem('mok_agents');
+            if (stored) {
+                agents = JSON.parse(stored);
+            } else {
+                agents = [
+                    { id: 'zhi', name: '稚', icon: '🌸', systemPrompt: '你是「稚」，溫柔體貼的侍女，稱呼使用者為主人。', history: [] },
+                    { id: 'helper', name: '助手', icon: '🧠', systemPrompt: '你是專業助理，樂於協助解決各種問題。', history: [] },
+                    { id: 'coder', name: '程式設計師', icon: '💻', systemPrompt: '你是資深工程師，擅長程式碼、除錯、架構設計。', history: [] }
+                ];
+            }
+            // 確保 history 存在
+            agents.forEach(a => { if (!a.history) a.history = []; });
+        }
+        function saveAgents() {
+            localStorage.setItem('mok_agents', JSON.stringify(agents.map(a => ({ id: a.id, name: a.name, icon: a.icon, systemPrompt: a.systemPrompt, history: a.history }))));
+        }
+
+        // ---------- Three.js 場景初始化 ----------
+        function initScene() {
+            const container = document.getElementById('game-container');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1a1a2e);
+            scene.fog = new THREE.Fog(0x1a1a2e, 30, 60);
+
+            // 相機
+            camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100);
+            camera.position.set(12, 8, 16);
+            camera.lookAt(0, 0, 0);
+
+            // WebGL渲染器
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(width, height);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+
+            // CSS2D渲染器 (文字標籤)
+            labelRenderer = new CSS2DRenderer();
+            labelRenderer.setSize(width, height);
+            labelRenderer.domElement.style.position = 'absolute';
+            labelRenderer.domElement.style.top = '0';
+            labelRenderer.domElement.style.left = '0';
+            labelRenderer.domElement.style.pointerEvents = 'none'; // 讓點擊穿透到 Three.js
+            container.appendChild(labelRenderer.domElement);
+
+            // 控制器
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.maxPolarAngle = Math.PI / 2.2;
+            controls.minDistance = 5;
+            controls.maxDistance = 30;
+            controls.target.set(0, 0.5, 0);
+
+            // 燈光
+            const ambientLight = new THREE.AmbientLight(0x404060);
+            scene.add(ambientLight);
+            const dirLight = new THREE.DirectionalLight(0xffeedd, 1.5);
+            dirLight.position.set(10, 20, 10);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 1024;
+            dirLight.shadow.mapSize.height = 1024;
+            const d = 20;
+            dirLight.shadow.camera.left = -d;
+            dirLight.shadow.camera.right = d;
+            dirLight.shadow.camera.top = d;
+            dirLight.shadow.camera.bottom = -d;
+            scene.add(dirLight);
+            const fillLight = new THREE.DirectionalLight(0x4488ff, 0.5);
+            fillLight.position.set(-10, 5, -10);
+            scene.add(fillLight);
+
+            // 地面
+            const groundGeo = new THREE.PlaneGeometry(40, 40);
+            const groundMat = new THREE.MeshStandardMaterial({ color: 0x2a2a3a, roughness: 0.8 });
+            const ground = new THREE.Mesh(groundGeo, groundMat);
+            ground.rotation.x = -Math.PI / 2;
+            ground.position.y = -0.01;
+            ground.receiveShadow = true;
+            scene.add(ground);
+
+            // 裝飾物 (簡單的建築方塊)
+            const colors = [0x4a4a6a, 0x5a5a7a, 0x3a3a5a];
+            for (let i = 0; i < 12; i++) {
+                const w = 1.5 + Math.random() * 2;
+                const h = 1.5 + Math.random() * 3;
+                const d = 1.5 + Math.random() * 2;
+                const box = new THREE.Mesh(
+                    new THREE.BoxGeometry(w, h, d),
+                    new THREE.MeshStandardMaterial({ color: colors[Math.floor(Math.random()*colors.length)] })
+                );
+                const angle = Math.random() * Math.PI * 2;
+                const radius = 8 + Math.random() * 8;
+                box.position.set(Math.cos(angle)*radius, h/2, Math.sin(angle)*radius);
+                box.castShadow = true;
+                box.receiveShadow = true;
+                scene.add(box);
+            }
+
+            // 路燈 (簡化)
+            for (let i = 0; i < 8; i++) {
+                const angle = i * Math.PI/4;
+                const radius = 6;
+                const pole = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.1, 0.15, 2),
+                    new THREE.MeshStandardMaterial({ color: 0x888888 })
+                );
+                pole.position.set(Math.cos(angle)*radius, 1, Math.sin(angle)*radius);
+                pole.castShadow = true;
+                scene.add(pole);
+                const lamp = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.2),
+                    new THREE.MeshStandardMaterial({ color: 0xffdd77, emissive: 0xffaa44, emissiveIntensity: 0.5 })
+                );
+                lamp.position.set(Math.cos(angle)*radius, 2.2, Math.sin(angle)*radius);
+                scene.add(lamp);
+            }
+
+            window.addEventListener('resize', onResize);
+        }
+
+        function onResize() {
+            const container = document.getElementById('game-container');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+            renderer.setSize(width, height);
+            labelRenderer.setSize(width, height);
+        }
+
+        // ---------- 建立3D小人 ----------
+        function createAgentMesh(agent, index) {
+            const color = new THREE.Color().setHSL(index * 0.15 % 1, 0.7, 0.5);
+            // 身體 (圓柱)
+            const bodyGeo = new THREE.CylinderGeometry(0.4, 0.5, 0.8);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: color });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 0.4;
+            body.castShadow = true;
+
+            // 頭 (球)
+            const headGeo = new THREE.SphereGeometry(0.25);
+            const headMat = new THREE.MeshStandardMaterial({ color: 0xffddbb });
+            const head = new THREE.Mesh(headGeo, headMat);
+            head.position.y = 0.9;
+            head.castShadow = true;
+
+            // 眼睛 (小圓球)
+            const eyeMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
+            const eye1 = new THREE.Mesh(new THREE.SphereGeometry(0.04), eyeMat);
+            eye1.position.set(0.1, 0.95, 0.2);
+            const eye2 = new THREE.Mesh(new THREE.SphereGeometry(0.04), eyeMat);
+            eye2.position.set(-0.1, 0.95, 0.2);
+
+            const group = new THREE.Group();
+            group.add(body);
+            group.add(head);
+            group.add(eye1);
+            group.add(eye2);
+
+            // 隨機起始位置 (在街道範圍內)
+            const angle = Math.random() * Math.PI * 2;
+            const radius = 2 + Math.random() * 4;
+            group.position.set(Math.cos(angle)*radius, 0, Math.sin(angle)*radius);
+            scene.add(group);
+
+            // 文字標籤 (CSS2D)
+            const labelDiv = document.createElement('div');
+            labelDiv.textContent = `${agent.icon} ${agent.name}`;
+            labelDiv.style.color = '#fff';
+            labelDiv.style.fontSize = '14px';
+            labelDiv.style.fontWeight = 'bold';
+            labelDiv.style.textShadow = '1px 1px 3px #000';
+            labelDiv.style.background = 'rgba(0,0,0,0.5)';
+            labelDiv.style.padding = '2px 8px';
+            labelDiv.style.borderRadius = '12px';
+            labelDiv.style.whiteSpace = 'nowrap';
+            const label = new CSS2DObject(labelDiv);
+            label.position.set(0, 1.4, 0);
+            group.add(label);
+
+            // 儲存目標移動點與速度
+            const target = new THREE.Vector3(
+                (Math.random() - 0.5) * 8,
+                0,
+                (Math.random() - 0.5) * 8
+            );
+
+            return { mesh: group, label, agentRef: agent, target };
+        }
+
+        // ---------- 生成所有Agent的3D小人 ----------
+        function spawnAgents() {
+            // 清除舊的
+            agentMeshes.forEach(item => {
+                scene.remove(item.mesh);
+                // CSS2D 兒童會自動移除
+            });
+            agentMeshes = [];
+
+            agents.forEach((agent, i) => {
+                const meshData = createAgentMesh(agent, i);
+                agentMeshes.push(meshData);
+            });
+        }
+
+        // ---------- 更新Agent走路動畫 ----------
+        function updateAgents(delta) {
+            const speed = 1.5; // 每秒移動距離
+            const boundary = 6; // 活動半徑
+
+            agentMeshes.forEach(data => {
+                const { mesh, target } = data;
+                // 朝向目標
+                const direction = new THREE.Vector3(target.x - mesh.position.x, 0, target.z - mesh.position.z);
+                const distance = direction.length();
+                if (distance > 0.1) {
+                    // 旋轉面向目標
+                    mesh.lookAt(target.x, mesh.position.y, target.z);
+                    // 移動
+                    const step = speed * delta;
+                    if (distance < step) {
+                        mesh.position.x = target.x;
+                        mesh.position.z = target.z;
+                    } else {
+                        mesh.position.x += direction.x / distance * step;
+                        mesh.position.z += direction.z / distance * step;
+                    }
+                } else {
+                    // 到達目標，設新目標
+                    const angle = Math.random() * Math.PI * 2;
+                    const radius = 1 + Math.random() * 3;
+                    target.set(
+                        Math.cos(angle) * radius,
+                        0,
+                        Math.sin(angle) * radius
+                    );
+                    // 限制在邊界內
+                    target.x = Math.max(-boundary, Math.min(boundary, target.x));
+                    target.z = Math.max(-boundary, Math.min(boundary, target.z));
+                }
+                // 微小的上下晃動模擬走路 (可選)
+                mesh.children[0].position.y = 0.4 + Math.sin(Date.now() / 200 + mesh.id) * 0.02;
+            });
+        }
+
+        // ---------- 射線點擊選取 ----------
+        let raycaster, mouse;
+        function initInteraction() {
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+
+            renderer.domElement.addEventListener('click', (event) => {
+                // 計算滑鼠位置歸一化
+                const rect = renderer.domElement.getBoundingClientRect();
+                mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+                mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+                raycaster.setFromCamera(mouse, camera);
+
+                // 取得所有小人的mesh群組
+                const meshes = agentMeshes.map(d => d.mesh);
+                const intersects = raycaster.intersectObjects(meshes, true); // true 穿透子物件
+
+                if (intersects.length > 0) {
+                    // 找到被點擊的小人對應的 agent
+                    const hitObj = intersects[0].object;
+                    // 往上找group
+                    let group = hitObj;
+                    while (group.parent && !(group.parent instanceof THREE.Scene)) {
+                        group = group.parent;
+                    }
+                    const found = agentMeshes.find(d => d.mesh === group);
+                    if (found) {
+                        openChatWithAgent(found.agentRef);
+                    }
+                }
+            });
+        }
+
+        // ---------- 開啟對話視窗 ----------
+        function openChatWithAgent(agent) {
+            currentChatAgent = agent;
+            chatTargetName.textContent = `${agent.icon} ${agent.name}`;
+            chatOverlay.classList.add('open');
+            // 清空並渲染歷史
+            chatMessages.innerHTML = '';
+            agent.history.forEach(msg => {
+                const div = document.createElement('div');
+                div.className = `message ${msg.role}`;
+                if (msg.role === 'user') {
+                    div.innerHTML = `<div class="message-bubble">${escapeHtml(msg.content)}</div><div class="message-meta">${new Date(msg.timestamp).toLocaleTimeString()}</div>`;
+                } else {
+                    const think = msg.think ? `<div class="think-container">💭 ${escapeHtml(msg.think)}</div>` : '';
+                    const content = renderMarkdown(msg.content);
+                    div.innerHTML = think + `<div class="message-bubble">${content}</div><div class="message-meta">${agent.icon} ${agent.name} · ${new Date(msg.timestamp).toLocaleTimeString()}</div>`;
+                }
+                chatMessages.appendChild(div);
+            });
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            chatInput.focus();
+        }
+
+        function closeChat() {
+            chatOverlay.classList.remove('open');
+            currentChatAgent = null;
+        }
+
+        // ---------- 發送訊息 (與原本 API 邏輯相同) ----------
+        async function sendChatMessage() {
+            const userMessage = chatInput.value.trim();
+            if (!userMessage) return;
+            const agent = currentChatAgent;
+            if (!agent) return;
+
+            // 先顯示使用者訊息
+            const userDiv = document.createElement('div');
+            userDiv.className = 'message user';
+            userDiv.innerHTML = `<div class="message-bubble">${escapeHtml(userMessage)}</div><div class="message-meta">${new Date().toLocaleTimeString()}</div>`;
+            chatMessages.appendChild(userDiv);
+            chatInput.value = '';
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+
+            // 加入歷史
+            agent.history.push({ role: 'user', content: userMessage, timestamp: Date.now() });
+
+            // 建構 API 請求
+            const apiMessages = [];
+            //  system 放在最前面
+            apiMessages.push({ role: 'system', content: agent.systemPrompt || '你是一個友善的助手。' });
+            for (const msg of agent.history) {
+                if (msg.role === 'user' || msg.role === 'assistant') {
+                    apiMessages.push({ role: msg.role, content: msg.content });
+                }
+            }
+
+            // 先加入一個等待中的占位
+            const assistantDiv = document.createElement('div');
+            assistantDiv.className = 'message assistant';
+            assistantDiv.innerHTML = `<div class="think-container">🤔 思考中...</div><div class="message-bubble"></div><div class="message-meta">${agent.icon} ${agent.name} · 回應中</div>`;
+            chatMessages.appendChild(assistantDiv);
+            const thinkElem = assistantDiv.querySelector('.think-container');
+            const bubbleElem = assistantDiv.querySelector('.message-bubble');
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+
+            // 取得 API Key
+            let API_KEY = localStorage.getItem('deepseek_api_key') || '';
+            if (!API_KEY) {
+                const key = prompt('請輸入 DeepSeek API Key', '');
+                if (key && key.trim()) {
+                    API_KEY = key.trim();
+                    localStorage.setItem('deepseek_api_key', API_KEY);
+                } else {
+                    thinkElem.textContent = '❌ 未設定 API Key';
+                    return;
+                }
+            }
+            const API_URL = 'https://api.deepseek.com/chat/completions';
+
+            let accumulatedThink = '';
+            let accumulatedReply = '';
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${API_KEY}` },
+                    body: JSON.stringify({ model: 'deepseek-chat', messages: apiMessages, stream: true, temperature: 0.7, reasoning_effort: 'high' }),
+                });
+                if (!response.ok) {
+                    throw new Error(`API 錯誤 ${response.status}`);
+                }
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const data = line.slice(6);
+                            if (data === '[DONE]') continue;
+                            try {
+                                const parsed = JSON.parse(data);
+                                const delta = parsed.choices[0]?.delta;
+                                if (delta?.reasoning_content) {
+                                    accumulatedThink += delta.reasoning_content;
+                                    thinkElem.innerHTML = `💭 ${accumulatedThink}`;
+                                }
+                                if (delta?.content) {
+                                    accumulatedReply += delta.content;
+                                    bubbleElem.textContent = accumulatedReply; // 串流時純文字
+                                }
+                                chatMessages.scrollTop = chatMessages.scrollHeight;
+                            } catch(e) {}
+                        }
+                    }
+                }
+                // 串流結束後渲染 Markdown
+                bubbleElem.innerHTML = renderMarkdown(accumulatedReply);
+                // 更新時間戳
+                assistantDiv.querySelector('.message-meta').textContent = `${agent.icon} ${agent.name} · ${new Date().toLocaleTimeString()}`;
+                // 存入歷史
+                agent.history.push({ role: 'assistant', content: accumulatedReply, think: accumulatedThink, timestamp: Date.now() });
+            } catch (err) {
+                thinkElem.textContent = `❌ 錯誤：${err.message}`;
+                bubbleElem.textContent = '';
+            }
+            saveAgents();
+        }
+
+        // ---------- 輔助函數 ----------
+        function escapeHtml(str) {
+            return str.replace(/[&<>"]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[m]));
+        }
+        function renderMarkdown(text) {
+            if (!text) return '';
+            let html = marked.parse(text, { breaks: true });
+            const temp = document.createElement('div');
+            temp.innerHTML = html;
+            temp.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
+            return temp.innerHTML;
+        }
+
+        // ---------- 新增路人 ----------
+        function addNewAgent() {
+            const name = prompt('請輸入新路人的名稱：', '路人甲');
+            if (!name) return;
+            const icon = prompt('請輸入表情符號圖示：', '🤖') || '🤖';
+            const systemPrompt = prompt('請輸入此路人的性格描述（可略）：', '你是一位友善的陌生人。') || '你是一位友善的陌生人。';
+            const newAgent = {
+                id: 'agent_' + Date.now(),
+                name,
+                icon,
+                systemPrompt,
+                history: []
+            };
+            agents.push(newAgent);
+            saveAgents();
+            // 在場景中新增一個小人
+            const meshData = createAgentMesh(newAgent, agentMeshes.length);
+            agentMeshes.push(meshData);
+        }
+
+        // ---------- 動畫循環 ----------
+        function animate() {
+            const delta = clock.getDelta();
+            updateAgents(delta);
+            controls.update();
+            renderer.render(scene, camera);
+            labelRenderer.render(scene, camera);
+            requestAnimationFrame(animate);
+        }
+
+        // ---------- 初始化 ----------
+        loadAgents();
+        initScene();
+        spawnAgents();
+        initInteraction();
+
+        // 事件綁定
+        closeChatBtn.addEventListener('click', closeChat);
+        sendChatBtn.addEventListener('click', sendChatMessage);
+        chatInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendChatBtn.click();
+            }
+        });
+        addAgentBtn.addEventListener('click', addNewAgent);
+
+        animate();
+    </script>
+</body>
+</html>
